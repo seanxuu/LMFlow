@@ -24,6 +24,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from lmflow.datasets.dataset import Dataset
 from lmflow.pipeline.base_tuner import BaseTuner
 from lmflow.pipeline.utils.peft_trainer import PeftTrainer, PeftSavingCallback
+from lmflow.pipeline.utils.qlora_trainer import QloraTrainer, QloraSavingCallback
 
 
 logger = logging.getLogger(__name__)
@@ -270,6 +271,9 @@ class Finetuner(BaseTuner):
         if model_args.use_lora:
             FinetuningTrainer = PeftTrainer
             trainer_callbacks = [PeftSavingCallback]
+        elif model_args.use_qlora:
+            FinetuningTrainer =  QloraTrainer
+            trainer_callbacks = [QloraSavingCallback]
         else:
             FinetuningTrainer = Trainer
             trainer_callbacks = []
