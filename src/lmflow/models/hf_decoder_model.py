@@ -53,21 +53,23 @@ from lmflow.utils.constants import (
     TEXT2TEXT_DATASET_DESCRIPTION,
 )
 
-
 logger = logging.getLogger(__name__)
-
+# 定义支持Flash Attention的模型列表
 MODELS_SUPPORT_FLASH_ATTENTION = [
     "LlamaForCausalLM",
     "GPTNeoForCausalLM",
     "GPT2ForCausalLM",
     "BloomForCausalLM"
 ]
+# 定义支持Flash Attention的GPU设备及对应的模型列表
 
 GPU_SUPPORT_FLASH_ATTENTION = {
     "A100": ["LlamaForCausalLM", "GPTNeoForCausalLM", "GPT2ForCausalLM", "BloomForCausalLM"],
     "A40": ["GPTNeoForCausalLM", "GPT2ForCausalLM", "BloomForCausalLM"]
 }
 
+
+# 定义HFDecoderModel类，继承自DecoderModel和Tunable
 class HFDecoderModel(DecoderModel, Tunable):
     r"""
     Initializes a HFDecoderModel instance.
@@ -92,14 +94,14 @@ class HFDecoderModel(DecoderModel, Tunable):
     """
 
     def __init__(
-        self,
-        model_args,
-        tune_strategy='normal',
-        ds_config=None,
-        device="gpu",
-        use_accelerator=False,
-        *args,
-        **kwargs
+            self,
+            model_args,
+            tune_strategy='normal',
+            ds_config=None,
+            device="gpu",
+            use_accelerator=False,
+            *args,
+            **kwargs
     ):
         """
         Initializes a HFDecoderModel instance.
@@ -137,19 +139,20 @@ class HFDecoderModel(DecoderModel, Tunable):
                 " --tokenizer_name."
             )
 
-        self.tokenizer = tokenizer  
-
+        self.tokenizer = tokenizer
+        # 设置模型的数据类型
         torch_dtype = (
             model_args.torch_dtype
             if model_args.torch_dtype in ["auto", None]
             else getattr(torch, model_args.torch_dtype)
         )
-
+        # 设置模型配置参数
         config_kwargs = {
             "cache_dir": model_args.cache_dir,
             "revision": model_args.model_revision,
             "use_auth_token": True if model_args.use_auth_token else None,
         }
+        # 加载模型配置
         if model_args.config_name:
             config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
         elif model_args.model_name_or_path:
@@ -162,13 +165,13 @@ class HFDecoderModel(DecoderModel, Tunable):
                 config.update_from_string(model_args.config_overrides)
                 logger.info(f"New config: {config}")
 
-        #position interpolation
+        # position interpolation
         if model_args.do_position_interpolation and model_args.do_ntk_scaling:
-           raise ValueError(f"annot support both --do_position_interpolation and --do_ntk_scaling now")
+            raise ValueError(f"annot support both --do_position_interpolation and --do_ntk_scaling now")
         if model_args.do_position_interpolation:
             if "LlamaForCausalLM" in config.architectures:
                 from lmflow.utils.position_interpolation.llama_rope_scaled_monkey_patch import (
-                        replace_llama_rope_with_scaled_rope,
+                    replace_llama_rope_with_scaled_rope,
                 )
                 replace_llama_rope_with_scaled_rope()
         if model_args.do_ntk_scaling:
@@ -177,7 +180,7 @@ class HFDecoderModel(DecoderModel, Tunable):
                     repalce_llama_rope_init_with_scaled_rope_init,
                 )
                 repalce_llama_rope_init_with_scaled_rope_init()
-                
+
         # Whether use flash attention
         supported_gpu_device = None
         for gpu in GPU_SUPPORT_FLASH_ATTENTION:
@@ -197,9 +200,9 @@ class HFDecoderModel(DecoderModel, Tunable):
                     " automatically use normal attention layer"
                 )
             else:
-                
+
                 supported_models = GPU_SUPPORT_FLASH_ATTENTION[supported_gpu_device]
-                
+
                 config.use_cache = False
                 if "LlamaForCausalLM" in config.architectures and "LlamaForCausalLM" in supported_models:
                     from lmflow.utils.flash_attention.llama_flash_attention import (
@@ -226,7 +229,7 @@ class HFDecoderModel(DecoderModel, Tunable):
                         f"Model \"{config.architectures}\" with GPU {supported_gpu_device} does not support"
                         " flash attention, use normal attention layer instead"
                     )
-                    
+        # 加载模型
         if tune_strategy == 'normal':
             if model_args.model_name_or_path:
                 model = AutoModelForCausalLM.from_pretrained(
@@ -241,7 +244,7 @@ class HFDecoderModel(DecoderModel, Tunable):
             else:
                 model = AutoModelForCausalLM.from_config(config)
                 n_params = sum(dict((p.data_ptr(), p.numel()) for p in model.parameters()).values())
-                logger.info(f"Training new model from scratch - Total size={n_params/2**20:.2f}M params")
+                logger.info(f"Training new model from scratch - Total size={n_params / 2 ** 20:.2f}M params")
             self.backend_model_full = model
             if model_args.use_lora:
                 if model_args.lora_target_modules:
@@ -263,19 +266,17 @@ class HFDecoderModel(DecoderModel, Tunable):
                     qlora_target_modules = model_args.qlora_target_modules
                 else:
                     qlora_target_modules = None
-                peft_config = qLoraConfig(
+                peft_config = LoraConfig(
+                    r=model_args.qlora_r,
+                    lora_alpha=model_args.qlora_alpha,
+                    target_modules=qlora_target_modules,
+                    lora_dropout=model_args.qlora_dropout,
+                    bias="none",
                     task_type=TaskType.CAUSAL_LM,
                     inference_mode=False,
-                    r=model_args.lora_r,
-                    lora_alpha=model_args.lora_alpha,
-                    lora_dropout=model_args.lora_dropout,
-                    target_modules=lora_target_modules,
                 )
                 model = get_peft_model(model, peft_config)
                 model.print_trainable_parameters()
-
-
-
 
             # We resize the embeddings only when necessary to avoid index errors.
             # If you are creating a model from scratch on a small vocab and want a
@@ -294,18 +295,18 @@ class HFDecoderModel(DecoderModel, Tunable):
             if use_accelerator:
                 peft_model_id = model_args.lora_model_path
                 self.backend_model = AutoModelForCausalLM.from_pretrained(
-                        model_args.model_name_or_path,
-                        config=config,
-                        device_map="auto",
-                        offload_folder="offload",
-                        offload_state_dict=True,
-                        torch_dtype=torch_dtype,
-                        load_in_8bit = model_args.use_int8
-                    )
+                    model_args.model_name_or_path,
+                    config=config,
+                    device_map="auto",
+                    offload_folder="offload",
+                    offload_state_dict=True,
+                    torch_dtype=torch_dtype,
+                    load_in_8bit=model_args.use_int8
+                )
                 if peft_model_id is not None:
                     self.backend_model = PeftModel.from_pretrained(
-                        self.backend_model, 
-                        peft_model_id, 
+                        self.backend_model,
+                        peft_model_id,
                     )
                 self.tokenizer.padding_side = "left"
             else:
@@ -358,9 +359,9 @@ class HFDecoderModel(DecoderModel, Tunable):
                     self.backend_model = PeftModel.from_pretrained(
                         self.backend_model, peft_model_id
                     )
-  
-                self.tokenizer.padding_side = "left" #necessary for llama, gpt2 and other decoder models
-                
+
+                self.tokenizer.padding_side = "left"  # necessary for llama, gpt2 and other decoder models
+
                 if device == "gpu":
                     deepspeed.init_distributed()
                     self.ds_engine = deepspeed.initialize(model=self.backend_model, config_params=ds_config)[0]
@@ -373,7 +374,6 @@ class HFDecoderModel(DecoderModel, Tunable):
             self.tokenizer.eos_token_id = self.backend_model.config.eos_token_id
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-
 
     def tokenize(self, dataset, add_special_tokens=True, *args, **kwargs):
         """
@@ -416,8 +416,8 @@ class HFDecoderModel(DecoderModel, Tunable):
         #   3) Which fields require loss in final computation, e.g.
         #        "text_only": "text"
         #        "text2text": "output" only
-        tokenized_column_order = None       # Handles 1) and 2)
-        label_columns = None                # Handles 3)
+        tokenized_column_order = None  # Handles 1) and 2)
+        label_columns = None  # Handles 3)
         if dataset_type == "text_only":
             tokenized_column_order = ["text"]
             label_columns = ["text"]
@@ -462,7 +462,7 @@ class HFDecoderModel(DecoderModel, Tunable):
                     else:
                         labels = [
                             [-100] * len(encoding["input_ids"][i])
-                             for i in range(num_example)
+                            for i in range(num_example)
                         ]
 
                     for i in range(num_example):
@@ -506,8 +506,7 @@ class HFDecoderModel(DecoderModel, Tunable):
             )
         return tokenized_datasets
 
-
-    def encode(self, input: Union[str, List[str]], *args, **kwargs ) -> Union[List[int], List[List[int]]]:
+    def encode(self, input: Union[str, List[str]], *args, **kwargs) -> Union[List[int], List[List[int]]]:
         """
         Perform encoding process of the tokenizer.
     
@@ -531,14 +530,13 @@ class HFDecoderModel(DecoderModel, Tunable):
             ["Hello,world!","Hello!"]-> {'input_ids': tensor([[  101,  7592,  1010,  2088,   102],...),'attention_mask': tensor([[1, 1, 1, 1, 1],[0,0,1,1,1]])}
         """
         if isinstance(input, list):
-            return self.tokenizer(text=input, *args, **kwargs)#batch encode,will automatically do left padding
+            return self.tokenizer(text=input, *args, **kwargs)  # batch encode,will automatically do left padding
         elif isinstance(input, str):
             return self.tokenizer.encode(text=input, *args, **kwargs)
         else:
             raise NotImplementedError(f'type "{type(input)}" cannot be encoded')
 
-
-    def decode(self, input, *args, **kwargs ) -> Union[str, List[str]]:
+    def decode(self, input, *args, **kwargs) -> Union[str, List[str]]:
         """
         Perform decoding process of the tokenizer.
     
@@ -563,13 +561,12 @@ class HFDecoderModel(DecoderModel, Tunable):
             [101, 7592, 1010, 2088, 102]-> "Hello,world!"
         """
         if isinstance(input, List):
-            input=torch.tensor(input)
-        if input.dim()==2:
-            return self.tokenizer.batch_decode(input, *args, **kwargs)#batch_decode
+            input = torch.tensor(input)
+        if input.dim() == 2:
+            return self.tokenizer.batch_decode(input, *args, **kwargs)  # batch_decode
         else:
             # Can be list of ints or a Tensor
             return self.tokenizer.decode(input, *args, **kwargs)
-
 
     def inference(self, inputs, use_accelerator=False, *args, **kwargs):
         """
@@ -591,7 +588,6 @@ class HFDecoderModel(DecoderModel, Tunable):
         outputs :
             The generated sequence output 
         """
-
 
         with torch.no_grad():
             if use_accelerator:
@@ -624,18 +620,17 @@ class HFDecoderModel(DecoderModel, Tunable):
                     )
         return outputs
 
-
     def merge_lora_weights(self):
         if self.model_args.use_lora:
             self.get_backend_model().merge_and_unload()
         else:
             logger.warning("LoRA training is NOT enabled. Merging LoRA weights is not applicable.")
+
     def merge_qlora_weights(self):
         if self.model_args.use_qlora:
             self.get_backend_model().merge_and_unload()
         else:
             logger.warning("qLoRA training is NOT enabled. Merging qLoRA weights is not applicable.")
-
 
     def save(self, dir, save_full_model=False, *args, **kwargs):
         """
@@ -663,20 +658,17 @@ class HFDecoderModel(DecoderModel, Tunable):
         else:
             self.get_backend_model().save_pretrained(dir)
 
-
     def get_max_length(self):
         """
         Return max acceptable input length in terms of tokens.
         """
         return self.tokenizer.model_max_length
 
-
     def get_tokenizer(self):
         """
         Return the tokenizer of the model.
         """
         return self.tokenizer
-
 
     def get_backend_model(self):
         """
