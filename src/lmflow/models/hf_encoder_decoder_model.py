@@ -376,6 +376,11 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
             self.get_backend_model().merge_and_unload()
         else:
             logger.warning("LoRA training is NOT enabled. Merging LoRA weights is not applicable.")
+    def merge_qlora_weights(self):
+        if self.model_args.use_qlora:
+            self.get_backend_model().merge_and_unload()
+        else:
+            logger.warning("qLoRA training is NOT enabled. Merging qLoRA weights is not applicable.")
 
 
     def save(self, dir, save_full_model=False, *args, **kwargs):

@@ -185,6 +185,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to save aggregated lora."},
         )
+    save_aggregated_qlora: bool = field(
+        default=False,
+        metadata={"help": "Whether to save aggregated qlora."},
+        )
     use_ram_optimized_load: bool = field(
         default=True,
         metadata={"help": "Whether use disk mapping when memory is not enough."}

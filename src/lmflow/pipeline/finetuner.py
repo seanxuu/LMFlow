@@ -26,7 +26,6 @@ from lmflow.pipeline.base_tuner import BaseTuner
 from lmflow.pipeline.utils.peft_trainer import PeftTrainer, PeftSavingCallback
 from lmflow.pipeline.utils.qlora_trainer import QloraTrainer, QloraSavingCallback
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +38,7 @@ class Finetuner(BaseTuner):
     model_args : ModelArguments object.
         Contains the arguments required to load the model.
 
-    data_args : DatasetArguments object.
+    data_args : DatasetAr   guments object.
         Contains the arguments required to load the dataset.
 
     finetuner_args : FinetunerArguments object.
@@ -52,6 +51,7 @@ class Finetuner(BaseTuner):
         Keyword arguments.
 
     """
+
     def __init__(self, model_args, data_args, finetuner_args, *args, **kwargs):
 
         self.model_args = model_args
@@ -89,7 +89,8 @@ class Finetuner(BaseTuner):
 
         # Detecting last checkpoint.
         last_checkpoint = None
-        if os.path.isdir(finetuner_args.output_dir) and finetuner_args.do_train and not finetuner_args.overwrite_output_dir:
+        if os.path.isdir(
+                finetuner_args.output_dir) and finetuner_args.do_train and not finetuner_args.overwrite_output_dir:
             last_checkpoint = get_last_checkpoint(finetuner_args.output_dir)
             if last_checkpoint is None and len(os.listdir(finetuner_args.output_dir)) > 0:
                 raise ValueError(
@@ -109,7 +110,6 @@ class Finetuner(BaseTuner):
         # Set seed before initializing model.
         set_seed(finetuner_args.seed)
 
-
     def group_text(self, tokenized_datasets, model_max_length):
         """
         Groups texts together to form blocks of maximum length `model_max_length` and returns the processed data as
@@ -122,16 +122,16 @@ class Finetuner(BaseTuner):
             block_size = model_max_length
             if block_size > 1024:
                 logger.warning(
-	    			"The chosen tokenizer supports a `model_max_length` that is"
-	    			" longer than the default `block_size` value"
-	    			" of 1024. If you would like to use a longer `block_size`"
-	    			" up to `tokenizer.model_max_length` you can override this "
-	    			" default with `--block_size xxx`."
+                    "The chosen tokenizer supports a `model_max_length` that is"
+                    " longer than the default `block_size` value"
+                    " of 1024. If you would like to use a longer `block_size`"
+                    " up to `tokenizer.model_max_length` you can override this "
+                    " default with `--block_size xxx`."
                 )
                 block_size = 1024
         else:
             if data_args.block_size > model_max_length:
-                if self.model_args.truncate_to_model_max_length:        
+                if self.model_args.truncate_to_model_max_length:
                     logger.warning(
                         f"The block_size passed ({data_args.block_size}) is larger"
                         f" than the maximum length for the model"
@@ -152,6 +152,7 @@ class Finetuner(BaseTuner):
                     block_size = data_args.block_size
             else:
                 block_size = data_args.block_size
+
         # Main data processing function that will concatenate all texts from
         # our dataset and generate chunks of block_size.
         def group_texts(examples):
@@ -164,7 +165,7 @@ class Finetuner(BaseTuner):
             total_length = (total_length // block_size) * block_size
             # Split by chunks of max_len.
             result = {
-                k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+                k: [t[i: i + block_size] for i in range(0, total_length, block_size)]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -198,7 +199,6 @@ class Finetuner(BaseTuner):
                 )
 
         return lm_datasets
-
 
     def tune(self, model, dataset, transform_dataset_in_place=True):
         """
@@ -241,7 +241,6 @@ class Finetuner(BaseTuner):
                 )
             eval_dataset = lm_dataset.get_backend_dataset()
 
-
             def preprocess_logits_for_metrics(logits, labels):
                 if isinstance(logits, tuple):
                     # Depending on the model and config, logits may contain extra tensors,
@@ -272,7 +271,7 @@ class Finetuner(BaseTuner):
             FinetuningTrainer = PeftTrainer
             trainer_callbacks = [PeftSavingCallback]
         elif model_args.use_qlora:
-            FinetuningTrainer =  QloraTrainer
+            FinetuningTrainer = QloraTrainer
             trainer_callbacks = [QloraSavingCallback]
         else:
             FinetuningTrainer = Trainer
@@ -301,12 +300,15 @@ class Finetuner(BaseTuner):
                 checkpoint = last_checkpoint
             train_result = trainer.train(resume_from_checkpoint=checkpoint)
 
-            if not model_args.use_lora:
+            if not model_args.use_lora or not model_args.use_qlora:
                 trainer.save_model()  # Saves the tokenizer too for easy upload
             else:
                 if model_args.save_aggregated_lora:
                     model.merge_lora_weights()
-                model.save(finetuner_args.output_dir,model_args.save_aggregated_lora)
+                    model.save(finetuner_args.output_dir, model_args.save_aggregated_lora)
+                if model_args.save_aggregated_qlora:
+                    model.merge_qlora_weights()
+                    model.save(finetuner_args.output_dir, model_args.save_aggregated_qlora)
 
             metrics = train_result.metrics
 

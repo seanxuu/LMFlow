@@ -258,6 +258,24 @@ class HFDecoderModel(DecoderModel, Tunable):
                 )
                 model = get_peft_model(model, peft_config)
                 model.print_trainable_parameters()
+            if model_args.use_qlora:
+                if model_args.qlora_target_modules:
+                    qlora_target_modules = model_args.qlora_target_modules
+                else:
+                    qlora_target_modules = None
+                peft_config = qLoraConfig(
+                    task_type=TaskType.CAUSAL_LM,
+                    inference_mode=False,
+                    r=model_args.lora_r,
+                    lora_alpha=model_args.lora_alpha,
+                    lora_dropout=model_args.lora_dropout,
+                    target_modules=lora_target_modules,
+                )
+                model = get_peft_model(model, peft_config)
+                model.print_trainable_parameters()
+
+
+
 
             # We resize the embeddings only when necessary to avoid index errors.
             # If you are creating a model from scratch on a small vocab and want a
@@ -612,6 +630,11 @@ class HFDecoderModel(DecoderModel, Tunable):
             self.get_backend_model().merge_and_unload()
         else:
             logger.warning("LoRA training is NOT enabled. Merging LoRA weights is not applicable.")
+    def merge_qlora_weights(self):
+        if self.model_args.use_qlora:
+            self.get_backend_model().merge_and_unload()
+        else:
+            logger.warning("qLoRA training is NOT enabled. Merging qLoRA weights is not applicable.")
 
 
     def save(self, dir, save_full_model=False, *args, **kwargs):
